@@ -108,6 +108,97 @@ When analysing a leader's comments, ask Claude to identify:
 6. **Content they highlight** — What kinds of text do they anchor comments to?
    Examples: unsupported claims, vague language, section headings, data points
 
+## Style Profile Persistence
+
+### Storage location
+
+Profiles are stored in `~/.review-doc/profiles/`, one file per leader.
+
+### File naming
+
+The filename is derived from the leader's email address:
+1. Replace `@` with `_at_`
+2. Replace every `.` with `_`
+3. Append `.md`
+
+Example: `jane.smith@company.com` → `jane_smith_at_company_com.md`
+
+### Profile file schema
+
+```markdown
+---
+leader_email: "jane.smith@company.com"
+leader_name: "Jane Smith"
+created: "2026-03-12T14:30:00Z"
+last_updated: "2026-03-12T16:45:00Z"
+comment_count: 27
+source_document_count: 5
+source_documents:
+  - url: "https://docs.google.com/document/d/abc123/edit"
+    name: "Q2 Strategy Review"
+    comments_used: 8
+  - url: "https://docs.google.com/presentation/d/def456/edit"
+    name: "Board Deck March"
+    comments_used: 6
+incorporated_comment_ids:
+  - "AAABOA2VNCA"
+  - "AAABOA3XYZB"
+user_corrections_applied: false
+---
+
+# Style Profile: Jane Smith
+
+## Focus Areas
+...
+
+## Tone
+...
+
+## Detail Level
+...
+
+## Comment Length
+...
+
+## Recurring Patterns
+...
+
+## What They Anchor To
+...
+```
+
+### Frontmatter fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `leader_email` | string | Leader's email address (matches `LEADER_EMAIL`) |
+| `leader_name` | string | Leader's display name |
+| `created` | ISO 8601 UTC | When the profile was first created |
+| `last_updated` | ISO 8601 UTC | When the profile was last written |
+| `comment_count` | integer | Total comments the current profile is based on |
+| `source_document_count` | integer | Number of distinct source documents used |
+| `source_documents` | list | Each entry has `url`, `name`, `comments_used` |
+| `incorporated_comment_ids` | list | All `comment_id` values from comments used in the profile |
+| `user_corrections_applied` | boolean | `true` if the user has manually corrected the profile |
+
+### Incremental update algorithm
+
+1. Read `incorporated_comment_ids` from the existing profile's frontmatter
+2. Run the normal comment discovery flow (Steps 3a–3b)
+3. Filter fetched comments: discard any whose `comment_id` is in `incorporated_comment_ids`
+4. If no new comments remain, use the existing profile unchanged
+5. If new comments exist, analyse them and merge insights into the existing profile body
+6. Append the new `comment_id` values to `incorporated_comment_ids`
+7. Increment `comment_count`, update `source_documents` list and `source_document_count`, update `last_updated`
+
+### Dedup mechanism
+
+The `comment_id` field from `fetch_comments.py` output maps directly to the Drive API `commentId` — a stable, immutable string assigned by Google when the comment is created. Using it as the dedup key means the same comment is never counted twice, even if a document is scanned in multiple sessions.
+
+### User correction preservation
+
+When `user_corrections_applied: true`, incremental updates must not overwrite corrected sections. New observations from new comments are appended or merged carefully; the user's edits to existing sections are left intact.
+
 ## Known Limitations
 
 ### Comment Anchoring

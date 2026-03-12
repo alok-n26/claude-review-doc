@@ -12,12 +12,14 @@ Use this skill to get an AI-powered first-pass review of a Google Doc or Google 
 
 1. Checks that Google OAuth is configured and guides setup if not
 2. Collects the target document URL and senior leader's email interactively
-3. Auto-discovers Google Docs/Slides where the leader has previously commented
-4. Analyses the leader's commenting style (focus areas, tone, depth, patterns)
-5. Reads the target document
-6. Generates 5–15 review comments in the leader's style
-7. Presents the comments for user approval before posting
-8. Posts approved comments to the document, prefixed with `[Leader Name]: feedback`
+3. Checks for a cached style profile in `~/.review-doc/profiles/` — if found, offers to use it as-is, update it incrementally, or rebuild from scratch
+4. Auto-discovers Google Docs/Slides where the leader has previously commented (skipped if using a cached profile as-is)
+5. Analyses the leader's commenting style (focus areas, tone, depth, patterns) — or loads from cache
+6. Saves the style profile to `~/.review-doc/profiles/` for reuse in future sessions
+7. Reads the target document
+8. Generates 5–15 review comments in the leader's style
+9. Presents the comments for user approval before posting
+10. Posts approved comments to the document, prefixed with `[Leader Name]: feedback`
 
 ## Prerequisites
 

@@ -95,6 +95,46 @@ Store these as:
 
 ---
 
+## Step 2b: Check for Existing Style Profile
+
+Derive the profile filename from `LEADER_EMAIL`:
+- Replace `@` with `_at_`
+- Replace every `.` with `_`
+- Append `.md`
+
+Example: `jane.smith@company.com` → `jane_smith_at_company_com.md`
+
+Store as `PROFILE_PATH` = `~/.review-doc/profiles/<sanitized_email>.md`
+
+**If the profile file exists**, read it and present its metadata to the user:
+
+> "I found an existing style profile for [LEADER_NAME]:
+> - Created: [created date]
+> - Last updated: [last_updated date]
+> - Based on [comment_count] comments across [source_document_count] document(s)
+>
+> How would you like to proceed?
+> **(a) Use as-is** — skip style analysis, go straight to reviewing the document
+> **(b) Update** — fetch new comments and refresh the profile
+> **(c) Rebuild from scratch** — re-analyse all comments and overwrite the profile
+> **(d) View profile** — show the full profile, then choose a/b/c"
+
+Handle each response:
+- **(a) Use as-is** → load the profile body, skip Steps 3–4, go to Step 5
+- **(b) Update** → proceed to Step 3 in **incremental mode** (see below)
+- **(c) Rebuild from scratch** → proceed to Step 3 as normal (full rebuild)
+- **(d) View profile** → display the full profile file contents, then re-ask a/b/c
+
+**If the profile file does not exist**, proceed directly to Step 3 (backward compatible — same as today).
+
+**If the profile file exists but cannot be read or appears corrupted**, tell the user:
+
+> "The existing profile for [LEADER_NAME] appears unreadable. I'll do a full rebuild."
+
+Then proceed to Step 3 as normal.
+
+---
+
 ## Step 3: Auto-Discover Training Data
 
 The goal is to collect past comments by the leader to learn their style.
@@ -127,6 +167,16 @@ Replace `N` with an incrementing number for each file.
 Read each output file. Aggregate all comments where `total_comments > 0`.
 
 **Stop early** once you have 30 or more comments across all files.
+
+**Incremental mode (when user chose "Update" in Step 2b):**
+
+1. Load `incorporated_comment_ids` from the existing profile's YAML frontmatter
+2. After aggregating all fetched comments, filter out any comment whose `comment_id` is already in `incorporated_comment_ids`
+3. If zero new comments remain after filtering:
+   > "No new comments found since the last profile update. Using the existing profile."
+   Load the existing profile body and go to Step 5.
+4. If new comments exist, proceed to Step 4 in **incremental update mode** with only the new comments
+5. The user may also provide extra document URLs to broaden coverage — for each, run `fetch_comments.py` as in Step 3c and apply the same dedup filter
 
 ### 3c. Fallback if insufficient comments found
 
@@ -187,7 +237,75 @@ Present the style profile to the user:
 >
 > Does this look right? You can correct anything before I proceed."
 
-If the user corrects the style profile, update it accordingly.
+If the user corrects the style profile, update it accordingly. If the user made corrections, set `user_corrections_applied: true` in the profile frontmatter when saving.
+
+**Incremental update mode** — when the user chose "Update" in Step 2b and new comments were found:
+
+1. Read the existing profile body from `PROFILE_PATH`
+2. Analyse only the new comments
+3. Produce an updated profile that integrates new insights with the existing analysis — do not discard existing observations, only enrich or refine them
+4. If `user_corrections_applied: true` in the existing frontmatter, preserve all user corrections — only add new observations, never override corrected sections
+5. Present the updated profile for user review/correction as above
+
+**Persistence — all modes** — after the user confirms the style profile:
+
+1. Collect metadata:
+   - `leader_email`: `LEADER_EMAIL`
+   - `leader_name`: `LEADER_NAME`
+   - `created`: current timestamp (ISO 8601, UTC) — preserve existing value if updating
+   - `last_updated`: current timestamp (ISO 8601, UTC)
+   - `comment_count`: total number of comments the profile is based on
+   - `source_document_count`: number of distinct documents used
+   - `source_documents`: list of `{url, name, comments_used}` for each source document
+   - `incorporated_comment_ids`: list of all `comment_id` values from all comments used
+   - `user_corrections_applied`: `true` if user made corrections, otherwise `false`
+2. Create the directory:
+   ```bash
+   mkdir -p ~/.review-doc/profiles/
+   ```
+3. Write the complete profile file (YAML frontmatter + Markdown body) to `PROFILE_PATH` using the Write tool. Use this structure:
+   ```
+   ---
+   leader_email: "..."
+   leader_name: "..."
+   created: "..."
+   last_updated: "..."
+   comment_count: N
+   source_document_count: M
+   source_documents:
+     - url: "..."
+       name: "..."
+       comments_used: N
+   incorporated_comment_ids:
+     - "..."
+   user_corrections_applied: false
+   ---
+
+   # Style Profile: [LEADER_NAME]
+
+   ## Focus Areas
+   ...
+
+   ## Tone
+   ...
+
+   ## Detail Level
+   ...
+
+   ## Comment Length
+   ...
+
+   ## Recurring Patterns
+   ...
+
+   ## What They Anchor To
+   ...
+   ```
+4. Report to the user: "Style profile saved to `~/.review-doc/profiles/<filename>`"
+
+If the `mkdir` or Write fails, warn the user but continue with the review:
+
+> "Note: Could not save the style profile to disk. The review will continue, but the profile won't be cached for next time."
 
 ---
 
@@ -315,3 +433,5 @@ Report the result:
 | Fewer than 5 training comments | Stop execution — tell user the sample is too small to emulate style reliably |
 | `add_comments.py` partial failure | Report which comments failed, offer to retry those specific ones |
 | `find_commented_files.py` returns 0 files | Skip auto-discovery, go straight to asking user for specific URLs (Step 3c) |
+| Profile file unreadable or corrupted | Treat as no profile found; warn user and proceed with full rebuild |
+| `~/.review-doc/profiles/` directory creation fails | Warn user that caching is unavailable; continue the review without saving the profile |

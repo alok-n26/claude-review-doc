@@ -70,6 +70,24 @@ Posted comments are prefixed so they're easy to identify:
 [Jane Smith]: This section needs a clearer success metric — what does good look like in 6 months?
 ```
 
+## Style profile caching
+
+After the first run for a given leader, the skill saves their style profile to:
+
+```
+~/.review-doc/profiles/<sanitized_email>.md
+```
+
+For example, `jane.smith@company.com` → `~/.review-doc/profiles/jane_smith_at_company_com.md`
+
+On subsequent runs for the same leader, the skill detects the saved profile and offers:
+- **Use as-is** — skip the comment discovery and analysis steps entirely (fastest)
+- **Update** — fetch only new comments since the last run and refresh the profile incrementally
+- **Rebuild from scratch** — re-analyse all comments and overwrite the profile
+- **View profile** — inspect the current profile before deciding
+
+Profile files are plain Markdown with YAML frontmatter and can be read or edited directly.
+
 ## Files
 
 | File | Purpose |
